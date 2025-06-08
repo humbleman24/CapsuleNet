@@ -136,7 +136,7 @@ class CapsuleNet(nn.Module):
         batch_size = x.size(0)
         
         # x: (B, 10, 16)
-        v_k = torch.norm(x, dim=2)  # → (B, 10)
+        v_k = torch.sqrt((x**2).sum(dim=2))  # → (B, 10)
 
         one_hot = torch.zeros(batch_size, 10, device=x.device)
         one_hot.scatter_(1, label.view(-1, 1), 1.0)
@@ -146,8 +146,7 @@ class CapsuleNet(nn.Module):
         neg = F.relu(v_k - m_neg).pow(2)
 
         loss = one_hot * pos + lambda_ * (1.0 - one_hot) * neg
-        return loss.mean()
-
+        return loss.sum(dim=1).mean()
 
 
 

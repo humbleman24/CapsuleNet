@@ -39,7 +39,7 @@ def main():
     train_loader, test_loader = get_mnist_loaders(batch_size=128)
 
     model = CapsuleNet().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
     criterion = model.margin_loss
 
     num_epochs = 50

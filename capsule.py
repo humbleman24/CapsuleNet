@@ -132,18 +132,21 @@ class CapsuleNet(nn.Module):
 
         return x_out
 
-    def margin_loss(self, x, label):
+    def margin_loss(self, x, label, m_pos=0.9, m_neg=0.1, lambda_=0.5):
         batch_size = x.size(0)
-
-        v_k = torch.sqrt((x ** 2).sum(dim=-1, keepdim=True))
-        pos = F.relu((0.9 - v_k)) ** 2 .view(batch_size, -1)
-        neg = F.relu((v_k - 0.1)) ** 2 .view(batch_size, -1)
-
-        loss = label * pos + 0.5 * (1 - label) * neg
-        loss = loss.sum()
         
-        return loss / batch_size
-        
+        # x: (B, 10, 16)
+        v_k = torch.norm(x, dim=2)  # → (B, 10)
+
+        one_hot = torch.zeros(batch_size, 10, device=x.device)
+        one_hot.scatter_(1, label.view(-1, 1), 1.0)
+        one_hot = one_hot.float()
+
+        pos = F.relu(m_pos - v_k).pow(2)
+        neg = F.relu(v_k - m_neg).pow(2)
+
+        loss = one_hot * pos + lambda_ * (1.0 - one_hot) * neg
+        return loss.mean()
 
 
 

@@ -20,19 +20,26 @@ def train(model, train_loader, optimizer, criterion, epoch):
         loss.backward()
         optimizer.step()
 
+        v_length = torch.sqrt((output**2).sum(dim=2))  # (batch_size, num_caps)
+        pred = v_length.argmax(dim=1)  # (batch_size,)
+        
         total_loss += loss.item()
-        _, predicted = output.max(1)
         total += target.size(0)
-        correct += predicted.eq(target).sum().item()
+        correct += pred.eq(target).sum().item()
 
-    print(f'Epoch: {epoch}, Loss: {total_loss / len(train_loader)}, Accuracy: {100. * correct / total}')
+        if batch_idx % 100 == 0:
+            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)} '
+                  f'({100. * batch_idx / len(train_loader):.0f}%)]\t'
+                  f'Loss: {loss.item():.6f}')
+
+    print(f'Epoch: {epoch}, Loss: {total_loss / len(train_loader)}, Accuracy: {100. * correct / total:.2f}%')
 
 
 def main():
-    train_loader, test_loader = get_mnist_loaders(batch_size=32)
+    train_loader, test_loader = get_mnist_loaders(batch_size=128)
 
     model = CapsuleNet().to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0005)
     criterion = model.margin_loss
 
     num_epochs = 50

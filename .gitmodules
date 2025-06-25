@@ -1,0 +1,3 @@
+[submodule "CapsuleNet"]
+	path = CapsuleNet
+	url = git@github.com:abdn-hyd/CapsuleNet.git

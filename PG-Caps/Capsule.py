@@ -157,28 +157,114 @@ class RoutingCaps(nn.Module):
         S = self.squash(S)
         return S
 
+class RoutingCapsMultiInput(nn.Module):
+    """
+    A Capsule Network layer that performs routing from multiple preceding
+    capsule layers to a single output capsule layer.
+    """
+    def __init__(
+        self,
+        in_capsules_list: List[List[int]],
+        out_capsules: List[int],
+    ):
+        """
+        Args:
+            in_capsules_list (List[Tuple[int, int]]): A list of specifications for each
+                                                      input capsule layer. Each specification
+                                                      is a tuple of (Number of Capsules, Capsule Dimension).
+            out_capsules (Tuple[int, int]): A specification for the output capsule layer,
+                                            as a tuple of (Number of Capsules, Capsule Dimension).
+        """
+        super(RoutingCapsMultiInput, self).__init__()
+
+        self.N1, self.D1 = out_capsules
+        self.in_specs = in_capsules_list
+        self.squash = Squash()
+
+        # Create a list of transformation matrices (W), one for each input layer.
+        self.W_list = nn.ParameterList([
+            nn.Parameter(torch.randn(self.N1, num_in_caps, dim_in_caps, self.D1))
+            for num_in_caps, dim_in_caps in self.in_specs
+        ])
+
+        # Initialize weights using Kaiming normal initialization for better training.
+        for W in self.W_list:
+            nn.init.kaiming_normal_(W, mode='fan_in', nonlinearity='relu')
+
+        # The total number of input capsules is the sum from all input layers.
+        total_in_caps_count = sum(spec[0] for spec in self.in_specs)
+
+        # The learnable bias `b` for routing must match the combined input size.
+        self.b = nn.Parameter(torch.zeros(self.N1, total_in_caps_count, total_in_caps_count))
+
+    def forward(
+        self,
+        x_list: List[torch.Tensor],
+    ) -> torch.Tensor:
+        """
+        Performs the forward pass.
+
+        Args:
+            x_list (List[torch.Tensor]): A list of input tensors, where each tensor corresponds
+                                         to an input capsule layer specified in the constructor.
+                                         Each tensor should have a shape of [Batch, Num_Caps, Dim_Caps].
+
+        Returns:
+            torch.Tensor: The output capsules tensor of shape [Batch, N1, D1].
+        """
+        # Generate prediction vectors for each input layer
+        # `U_list` will hold the prediction tensors from each input.
+        U_list = [
+            torch.einsum("...ij,kijl->...kil", x, self.W_list[i])
+            for i, x in enumerate(x_list)
+        ]
+
+        # Concatenate prediction vectors along the source capsule dimension (dim=2)
+        # This creates a unified set of predictions for the routing algorithm.
+        U_cat = torch.cat(U_list, dim=2)  # Shape: [B, N1, total_in_caps, D1]
+
+        # --- Self-Attention Routing on Combined Predictions ---
+
+        # Transpose U for matrix multiplication.
+        U_T = U_cat.permute(0, 1, 3, 2)  # Shape: [B, N1, D1, total_in_caps]
+
+        # Calculate agreement (attention scores) between prediction vectors.
+        # Note: The scaling factor should use the dimension of the predictions (D1).
+        scaling_factor = torch.sqrt(torch.tensor(self.D1).float()).to(U_cat.device)
+        A = torch.matmul(U_cat, U_T) / scaling_factor  # Shape: [B, N1, total_in_caps, total_in_caps]
+
+        # Add the learnable bias and apply softmax to get coupling coefficients.
+        C = torch.softmax(A, dim=-1) + self.b  # Shape: [B, N1, total_in_caps, total_in_caps]
+
+        # Compute the final output capsules (S) by taking a weighted sum
+        # of the prediction vectors using the coupling coefficients.
+        S = torch.einsum("...kil,...kiz->...kl", U_cat, C)  # Shape: [B, N1, D1]
+
+        # Apply the squashing non-linearity.
+        S_squashed = self.squash(S)
+        return S_squashed
 
 class PG_Caps(nn.Module):
     def __init__(
         self,
         Conv_Cfgs: List[List[List[int]]] = [
             [
-                [3, 64, 3, 1, 1],
-                [64, 128, 3, 1, 1],
+                [3, 32, 3, 1, 1],
+                [32, 64, 3, 1, 1],
             ],
             [
-                [3, 64, 3, 2, 1],
-                [64, 128, 3, 1, 1],
+                [3, 32, 3, 2, 1],
+                [32, 64, 3, 1, 1],
             ],
             [
-                [3, 64, 3, 4, 1],
-                [64, 128, 3, 1, 1],
+                [3, 32, 3, 4, 1],
+                [32, 64, 3, 1, 1],
             ],
         ],
         PCaps_Cfgs: List[List[int]] = [
-            [128, 1, 7, 8, 2],
-            [128, 1, 5, 8, 2],
-            [128, 1, 3, 8, 2],
+            [64, 1, 7, 8, 2],
+            [64, 1, 5, 8, 2],
+            [64, 1, 3, 8, 2],
         ],
         RCaps_Cfg: List[List[int]] = [[214, 8], [100, 16], [10, 24]],
     ):
@@ -198,10 +284,15 @@ class PG_Caps(nn.Module):
             )
             self.Primary_list.append(nn.Sequential(*[convLayer, primaryCaps]))
 
+        self.first_rCaps = RoutingCaps(
+            in_capsules=RCaps_Cfg[0],
+            out_capsules=RCaps_Cfg[1],
+        )
+
         self.routingCaps = nn.ModuleList()
-        for i in range(len(RCaps_Cfg) - 1):
-            rCaps = RoutingCaps(
-            in_capsules=RCaps_Cfg[i],
+        for i in range(1, len(RCaps_Cfg) - 1):
+            rCaps = RoutingCapsMultiInput(
+            in_capsules_list=[RCaps_Cfg[i-1], RCaps_Cfg[i]],
             out_capsules=RCaps_Cfg[i + 1],
             )
             self.routingCaps.append(rCaps)
@@ -214,12 +305,15 @@ class PG_Caps(nn.Module):
         for i in range(len(self.Primary_list)):
             outs.append(self.Primary_list[i](x))
         
-        out = torch.cat(outs, dim=1)
+        first = torch.cat(outs, dim=1)
+
+        second = self.first_rCaps(first)
 
         for i in range(len(self.routingCaps)):
-            out = self.routingCaps[i](out)
+            pred = self.routingCaps[i]([first, second])
+            first, second = second, pred
 
-        return out
+        return pred
 
     def MarginalLoss(
         self,

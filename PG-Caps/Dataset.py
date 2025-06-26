@@ -146,7 +146,7 @@ class LocalCIFAR10(Dataset):
 def get_cifar10_dataloader(cfg):
     dataset = LocalCIFAR10(
         root=cfg.cifar10_path,
-        train=True,
+        train=cfg.train,
         transform=transforms.Compose(
             [
                 transforms.ToPILImage(),

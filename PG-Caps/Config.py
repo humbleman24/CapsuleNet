@@ -40,7 +40,7 @@ class Mnist_Training_Cfg:
 # config for Cifar10
 @dataclass
 class Cifar10_Train_Loader_Cfg:
-    cifar10_path: str = "/var/data/CIFAR-10/cifar-10-batches-py"
+    cifar10_path: str = "path/to/cifar-10-batches-py"
     train: bool = True
     batch_size: int = 128
     num_workers: int = 4
@@ -50,7 +50,7 @@ class Cifar10_Train_Loader_Cfg:
 
 @dataclass
 class Cifar10_Test_Loader_Cfg:
-    cifar10_path: str = "/var/data/CIFAR-10/cifar-10-batches-py"
+    cifar10_path: str = "path/to/cifar-10-batches-py"
     train: bool = False
     batch_size: int = 128
     num_workers: int = 4
@@ -63,7 +63,7 @@ class Cifar10_Training_Cfg:
     start_epoch: int = 0
     num_epochs: int = 50
     lr: float = 5e-4
-    output_dir: str = "/var/data/Training_Results/PGCaps/Cifar10/"
+    output_dir: str = "path/to/outputs/"
     save_model_epochs: int = 20
     resume: Optional[str] = None
     beta1: float = 0.9

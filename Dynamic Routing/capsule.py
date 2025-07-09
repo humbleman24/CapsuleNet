@@ -41,7 +41,7 @@ class PrimaryCaps(nn.Module):
     def squash(self, x):
         # Squash function
         squared_norm = (x ** 2).sum(dim=-1, keepdim=True)
-        output_tensor = squared_norm * x / ((1. + squared_norm) * torch.sqrt(squared_norm))
+        output_tensor = squared_norm * x / ((1. + squared_norm) * torch.sqrt(squared_norm + 1e-8))
         return output_tensor
 
 
@@ -99,7 +99,7 @@ class DigitCaps(nn.Module):
     def squash(self, x):
         # Squash function
         squared_norm = (x ** 2).sum(dim=-1, keepdim=True)
-        output_tensor = squared_norm * x / ((1. + squared_norm) * torch.sqrt(squared_norm))
+        output_tensor = squared_norm * x / ((1. + squared_norm) * torch.sqrt(squared_norm + 1e-8))
         return output_tensor
 
 
@@ -152,10 +152,12 @@ class CapsuleNet(nn.Module):
     def margin_loss(self, x, labels, size_average=True):
         batch_size = x.size(0)
 
+        labels = F.one_hot(labels, num_classes=self.num_classes).float()
+
         v_c = torch.sqrt((x ** 2).sum(dim=2, keepdim=True))
 
-        left = F.relu(0.9 - v_c).view(batch_size, -1)
-        right = F.relu(v_c - 0.1).view(batch_size, -1)
+        left = F.relu(0.9 - v_c).pow(2).view(batch_size, -1)
+        right = F.relu(v_c - 0.1).pow(2).view(batch_size, -1)
 
         loss = labels * left + 0.5 * (1.0 - labels) * right
         loss = loss.sum(dim=1).mean()

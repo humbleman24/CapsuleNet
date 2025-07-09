@@ -38,8 +38,8 @@ def Cifar10_Train():
         optimizer, gamma=train_Cfg.gamma, last_epoch=-1
     )
 
-    # summary the model
-    summary(model, input_size=(3, 32, 32))
+    # # summary the model
+    # summary(model, input_size=(3, 32, 32))
 
     Train_Test(train_loader, test_loader, model, train_Cfg, optimizer, lr_scheduler)
 
